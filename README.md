@@ -1,3 +1,7 @@
+![Streamlit](https://img.shields.io/badge/Streamlit-1.39.0-FF4B4B?logo=streamlit)
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)
+![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
+
 # Investment Portfolio Backtester
 
 An interactive Streamlit web application to **build, backtest, and compare investment portfolios** with historical stock and ETF data. Designed and developed by **Luis Ng**.  
@@ -67,25 +71,28 @@ streamlit run main.py
 
 ## Usage
 
-1. Build Portfolio
-- Enter portfolio name
-- Add tickers and weights
-- Save your portfolio
+1. **Build a Portfolio**  
+   - Enter portfolio name  
+   - Add tickers and weights  
+   - Save your portfolio  
 
-2. Compare Portfolios
-- Select one or more portfolios
-- Set backtesting date range (automatically limited to available data)
-- Click "Run Backtest"
-- View portfolio metrics, growth charts, and asset allocation
+
+2. **Run Backtests**  
+   - Select portfolios  
+   - Set backtesting range  
+   - Click "Run Backtest"  
+
+
+3. **View Results**  
+   - Metrics (returns, Sharpe, etc.)  
+   - Growth and allocation charts  
 
 ---
 
 ## Author
-
 Luis Ng
 
 ---
 
 ## License
-
-This project is open source and free to use.
+This project is licensed under the [MIT License](LICENSE).
