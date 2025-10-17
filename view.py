@@ -43,8 +43,8 @@ class View:
             ticker = new_ticker.strip().upper()
             if ticker and ticker not in st.session_state.tickers:
                 st.session_state.tickers.append(ticker)
-                st.session_state.new_ticker = ""  # Clear input
-                st.rerun()  # Rerun to update UI and clear input field
+                st.session_state.new_ticker = ""
+                st.rerun()
 
         portfolio = {}
         # Use a copy to avoid modifying during iteration
@@ -182,7 +182,6 @@ class View:
         n = len(all_prices)
         cols = st.columns(n)
 
-
         for i, (pname, prices) in enumerate(all_prices.items()):
             if prices.empty:
                 continue
@@ -191,7 +190,7 @@ class View:
                 corr,
                 text_auto=True,
                 color_continuous_scale="RdBu_r",
-                title= pname
+                title=pname
             )
             with cols[i]:
                 st.plotly_chart(fig, use_container_width=True)
