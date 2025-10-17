@@ -1,4 +1,21 @@
-streamlit~=1.50.0
-pandas~=2.3.3
-numpy~=2.3.4
-plotly~=6.3.1
+# Core app framework
+streamlit==1.50.0
+
+# Data handling
+pandas==2.3.3
+numpy==2.3.4
+
+# Visualization
+plotly==6.3.1
+
+# Finance data
+yfinance==0.2.66
+requests==2.32.5
+
+# Utilities
+python-dateutil==2.9.0.post0
+pytz==2025.2
+
+# Compatibility and performance
+typing_extensions==4.15.0
+packaging==25.0
