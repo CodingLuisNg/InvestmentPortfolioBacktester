@@ -1,9 +1,10 @@
 from view import View
 from model import DataModel, PortfolioModel
+from datetime import datetime
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
-from datetime import datetime
+import numpy as np
 
 
 class Controller:
@@ -26,8 +27,8 @@ class Controller:
 
     @staticmethod
     def build_page():
-        name, portfolio = View.build_portfolio_ui()
-        if st.button("Save Portfolio"):
+        name, portfolio, submitted = View.build_portfolio_ui()
+        if submitted:
             if not name or not portfolio:
                 st.warning("Please provide a portfolio name and at least one asset.")
             else:
@@ -38,28 +39,23 @@ class Controller:
     @staticmethod
     def compare_page():
         st.header("📈 Compare Portfolios")
-        start_date, end_date = View.compare_ui_default_dates()
+        start_date, end_date = View.compare_ui_dates()
         start_dt = datetime.combine(start_date, datetime.min.time())
         end_dt = datetime.combine(end_date, datetime.min.time())
-
         if start_dt > end_dt:
             st.warning("Start date cannot be after end date.")
             return
 
-        st.info(f"Backtesting from **{start_dt.strftime('%Y-%m-%d')}** to **{end_dt.strftime('%Y-%m-%d')}**.")
-
         selected = st.multiselect("Select portfolios", list(st.session_state.portfolios.keys()))
         if st.button("Run Backtest") and selected:
             tickers = sorted({t for p in selected for t in st.session_state.portfolios[p]})
-            with st.spinner("Fetching price data..."):
-                prices = DataModel.fetch_prices(tickers, start_dt, end_dt)
-
+            prices = DataModel.fetch_prices(tickers, start_dt, end_dt)
             if prices.empty:
                 st.warning("No price data available.")
                 return
 
             metrics_list, pie_figs, growth_fig = [], {}, go.Figure()
-            raw_scores, temp = [], []
+            risk_list, return_list, names = [], [], []
 
             for pname in selected:
                 weights = st.session_state.portfolios[pname]
@@ -75,46 +71,33 @@ class Controller:
                 days = (val.index[-1] - val.index[0]).days
                 ann_ret = PortfolioModel.annualized_return(total_ret, days)
                 risk = PortfolioModel.risk_metrics(ret)
-                raw = ann_ret * (risk["sharpe_ratio"] + risk["sortino_ratio"]) / 2
-                raw_scores.append(raw)
+                avg_vol = ret.std() * np.sqrt(252) * 100  # annualized volatility
 
-                temp.append({
+                metrics_list.append({
                     "Portfolio": pname,
                     "Total Return (%)": total_ret,
                     "Annualized Return (%)": ann_ret,
                     "Sharpe Ratio": risk["sharpe_ratio"],
                     "Sortino Ratio": risk["sortino_ratio"],
                     "Max Drawdown": risk["max_drawdown"],
-                    "Raw Score": raw,
-                    "ValueSeries": val
+                    "Average Volatility (%)": avg_vol
                 })
 
-            # Normalize performance score 0-100
-            if temp:
-                min_s, max_s = min(raw_scores), max(raw_scores)
-                for e in temp:
-                    e["Performance Score"] = (
-                        (e["Raw Score"] - min_s) / (max_s - min_s) * 100
-                        if max_s > min_s else 100
-                    )
-                    metrics_list.append({
-                        "Portfolio": e["Portfolio"],
-                        "Total Return (%)": e["Total Return (%)"],
-                        "Annualized Return (%)": e["Annualized Return (%)"],
-                        "Sharpe Ratio": e["Sharpe Ratio"],
-                        "Sortino Ratio": e["Sortino Ratio"],
-                        "Max Drawdown": e["Max Drawdown"],
-                        "Performance Score": e["Performance Score"]
-                    })
-                    w = st.session_state.portfolios[e["Portfolio"]]
-                    labels = [t for t in w if t in prices.columns]
-                    values = [w[t] for t in labels]
-                    pie = px.pie(names=labels, values=[v * 100 for v in values],
-                                 title=f"{e['Portfolio']} Allocation (%)")
-                    pie_figs[e["Portfolio"]] = pie
-                    growth_fig.add_trace(go.Scatter(
-                        x=e["ValueSeries"].index, y=e["ValueSeries"], name=e["Portfolio"], mode="lines"))
+                # Prepare risk-return plot
+                risk_list.append(avg_vol)
+                return_list.append(ann_ret)
+                names.append(pname)
+
+                # Growth chart
+                growth_fig.add_trace(go.Scatter(x=val.index, y=val, name=pname, mode="lines"))
+
+                # Pie chart
+                labels = [t for t in weights if t in prices.columns]
+                values = [weights[t]*100 for t in labels]
+                pie_figs[pname] = px.pie(names=labels, values=values, title=f"{pname} Allocation (%)")
 
             View.show_metrics_table(metrics_list)
-            View.show_pie_charts(pie_figs)
             View.show_growth_chart(growth_fig)
+            View.show_pie_charts(pie_figs)
+            View.show_risk_return(risk_list, return_list, names)
+            View.show_correlation_heatmap(prices, tickers)
