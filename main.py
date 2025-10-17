@@ -1,319 +1,383 @@
-import yfinance as yf
+"""
+Automatic Investment - Streamlit App (Refined, yfinance-only, MVC style)
+
+Architecture:
+- Model: data fetching & portfolio analytics
+- View: Streamlit UI components
+- Controller: connects View ↔ Model logic
+"""
+
+from typing import Dict, List, Tuple
+import math
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
+import yfinance as yf
 from datetime import datetime, timedelta
 
+# -----------------------------
+# Configuration
+# -----------------------------
+APP_TITLE = "Automatic Investment"
+CACHE_TTL = 24 * 3600  # 1 day cache
+
 
 # -----------------------------
-# Helper functions
+# Model Layer
 # -----------------------------
-DATA_FOLDER = "dataset"  # path to your TXT files
+class DataModel:
+    """Fetches and processes price data directly from yfinance."""
 
-@st.cache_data(ttl=24 * 3600)  # Cache for 24 hours
-def batch_download(tickers, start, end):
-    """
-    Download historical Close prices from yfinance.
-    Returns a DataFrame with tickers as columns and dates as index.
-    """
-    start = pd.to_datetime(start)
-    end = pd.to_datetime(end)
+    @staticmethod
+    @st.cache_data(ttl=CACHE_TTL)
+    def fetch_prices(tickers: List[str], start: datetime, end: datetime) -> pd.DataFrame:
+        """Fetch adjusted close prices for tickers between start and end using yfinance."""
+        if not tickers:
+            return pd.DataFrame()
 
-    # Download data for all tickers at once
-    data = yf.download(
-        tickers=[t.upper() for t in tickers],
-        start=start.strftime("%Y-%m-%d"),
-        end=(end + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
-        progress=False,
-        group_by="ticker",
-        auto_adjust=False
-    )
+        start = pd.to_datetime(start)
+        end = pd.to_datetime(end)
+        tickers = [t.upper() for t in tickers]
 
-    all_data = {}
-    for ticker in tickers:
-        t = ticker.upper()
-        if t in data:
-            close = data[t]["Close"].dropna()
-        elif "Close" in data.columns:  # Single ticker case
-            close = data["Close"].dropna()
-        else:
-            print(f"No data for ticker {t}")
-            continue
+        all_series = {}
+        batch_size = 5  # prevent rate-limit issues
 
-        # Filter by date range
-        close = close.loc[(close.index >= start) & (close.index <= end)]
-        if close.empty:
-            print(f"No close data in range for {t}")
-            continue
+        for i in range(0, len(tickers), batch_size):
+            batch = tickers[i:i + batch_size]
+            try:
+                raw = yf.download(
+                    tickers=batch,
+                    start=start.strftime("%Y-%m-%d"),
+                    end=(end + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
+                    progress=False,
+                    group_by="ticker",
+                    auto_adjust=True
+                )
+            except Exception as e:
+                print(f"[DataModel] yfinance download failed for {batch}: {e}")
+                continue
 
-        all_data[t] = close
+            # Handle both single- and multi-ticker downloads
+            if isinstance(raw.columns, pd.MultiIndex):
+                for t in batch:
+                    try:
+                        # Ensure the ticker exists in raw and is a DataFrame
+                        ticker_data = raw[t] if t in raw else None
+                        if ticker_data is None or ticker_data.empty:
+                            continue
 
-    if not all_data:
-        return pd.DataFrame()  # No data found
-    else:
-        df_all = pd.DataFrame(all_data).sort_index()
-        df_all.dropna(how='all', inplace=True)
-        return df_all
+                        if "Close" not in ticker_data.columns:
+                            continue
 
-def calculate_portfolio_value(df, weights, initial_investment=10000):
-    # Normalize weights
-    weights_sum = sum(weights.values())
-    normalized_weights = {ticker: w / weights_sum for ticker, w in weights.items() if ticker in df.columns}
-    if not normalized_weights:
-        return pd.Series(), pd.Series()
+                        close = ticker_data["Close"].dropna()
+                        close = close.loc[(close.index >= start) & (close.index <= end)]
+                        if not close.empty:
+                            close.name = t
+                            all_series[t] = close
 
-    # Calculate initial shares
-    initial_shares = {t: (initial_investment * w) / df[t].iloc[0] for t, w in normalized_weights.items() if
-                      df[t].iloc[0] > 0}
+                    except Exception as e:
+                        print(f"[DataModel] Failed to parse {t}: {e}")
+            else:
+                if "Close" in raw.columns:
+                    t = batch[0]
+                    close = raw["Close"].dropna()
+                    close = close.loc[(close.index >= start) & (close.index <= end)]
+                    if not close.empty:
+                        close.name = t
+                        all_series[t] = close
 
-    # Portfolio value over time
-    portfolio_value = pd.Series(0.0, index=df.index)
-    for t, shares in initial_shares.items():
-        portfolio_value += df[t] * shares
+        if not all_series:
+            return pd.DataFrame()
 
-    # Daily returns
-    portfolio_returns = portfolio_value.pct_change().dropna()
-
-    return portfolio_value, portfolio_returns
+        df = pd.concat(all_series.values(), axis=1)
+        df = df.sort_index().loc[~df.index.duplicated(keep="first")]
+        df.dropna(how="all", inplace=True)
+        return df
 
 
-def calculate_risk_metrics(returns_series):
-    metrics = {}
-    if returns_series.empty:
-        return {
-            "sharpe_ratio": 0,
-            "sortino_ratio": 0,
-            "max_drawdown": 0
+class PortfolioModel:
+    """Performs portfolio valuation, returns, and risk metric calculations."""
+
+    @staticmethod
+    def portfolio_value_from_prices(prices: pd.DataFrame, weights: Dict[str, float], initial_investment: float = 10_000.0) -> Tuple[pd.Series, pd.Series]:
+        if prices.empty or not weights:
+            return pd.Series(dtype=float), pd.Series(dtype=float)
+
+        weights_available = {t.upper(): w for t, w in weights.items() if t.upper() in prices.columns}
+        total = sum(weights_available.values())
+        if total <= 0:
+            return pd.Series(dtype=float), pd.Series(dtype=float)
+        normalized = {t: w / total for t, w in weights_available.items()}
+
+        first_prices = prices.iloc[0]
+        initial_shares = {
+            t: (initial_investment * w) / first_prices[t]
+            for t, w in normalized.items()
+            if t in first_prices and first_prices[t] > 0
         }
-    annual_factor = 252
-    # Volatility
-    vol = returns_series.std() * np.sqrt(annual_factor)
-    # Sharpe Ratio
-    risk_free = 0.03 / 252
-    excess_return = returns_series.mean() - risk_free
-    sharpe = (excess_return / returns_series.std()) * np.sqrt(annual_factor) if returns_series.std() > 0 else 0
-    # Sortino
-    downside = returns_series[returns_series < 0]
-    downside_dev = downside.std() * np.sqrt(annual_factor) if len(downside) > 0 else 0
-    sortino = (excess_return / downside_dev) * np.sqrt(annual_factor) if downside_dev > 0 else 0
-    # Max drawdown
-    cum = (1 + returns_series).cumprod()
-    running_max = cum.cummax()
-    drawdown = (cum / running_max) - 1
-    max_dd = drawdown.min()
+        if not initial_shares:
+            return pd.Series(dtype=float), pd.Series(dtype=float)
 
-    metrics["sharpe_ratio"] = sharpe
-    metrics["sortino_ratio"] = sortino
-    metrics["max_drawdown"] = max_dd
+        value = pd.Series(0.0, index=prices.index)
+        for t, shares in initial_shares.items():
+            value += prices[t] * shares
 
-    return metrics
+        returns = value.pct_change().dropna()
+
+        return value, returns
+
+    @staticmethod
+    def risk_metrics(daily_returns: pd.Series, risk_free_rate_annual: float = 0.03) -> Dict[str, float]:
+        if daily_returns.empty:
+            return {"sharpe_ratio": 0.0, "sortino_ratio": 0.0, "volatility_annual": 0.0, "max_drawdown": 0.0}
+
+        ann_factor = 252
+        vol_ann = daily_returns.std() * math.sqrt(ann_factor)
+        rf_daily = risk_free_rate_annual / ann_factor
+        excess = daily_returns.mean() - rf_daily
+        sharpe = (excess / daily_returns.std()) * math.sqrt(ann_factor) if daily_returns.std() > 0 else 0.0
+
+        downside = daily_returns[daily_returns < 0]
+        downside_dev = downside.std() * math.sqrt(ann_factor) if len(downside) > 0 else 0.0
+        sortino = (excess / downside_dev) * math.sqrt(ann_factor) if downside_dev > 0 else 0.0
+
+        cum = (1 + daily_returns).cumprod()
+        running_max = cum.cummax()
+        drawdown = (cum / running_max) - 1
+        max_dd = drawdown.min() if not drawdown.empty else 0.0
+
+        return {
+            "sharpe_ratio": float(sharpe),
+            "sortino_ratio": float(sortino),
+            "volatility_annual": float(vol_ann),
+            "max_drawdown": float(max_dd)
+        }
+
+    @staticmethod
+    def annualized_return(total_return_pct: float, days: int) -> float:
+        if days <= 0:
+            return 0.0
+        total = 1 + total_return_pct / 100.0
+        return (total ** (365.0 / days) - 1) * 100.0
 
 
 # -----------------------------
-# Initialize portfolios
+# View Layer
 # -----------------------------
-if "portfolios" not in st.session_state:
-    st.session_state.portfolios = {}
-    st.session_state.portfolios["Balanced 60/40"] = {"SPY": 0.6, "AGG": 0.4}
-    st.session_state.portfolios["S&P500"] = {"VOO": 1.0}
+class View:
+    @staticmethod
+    def set_page():
+        st.set_page_config(page_title=APP_TITLE, layout="wide")
 
-# -----------------------------
-# Streamlit page config
-# -----------------------------
-st.set_page_config(page_title="Automatic Investment", layout="wide")  # WIDE layout
+    @staticmethod
+    def header():
+        st.title(APP_TITLE)
 
-# -----------------------------
-# Sidebar - Page selection
-# -----------------------------
-page = st.sidebar.selectbox("Choose page", ["Build Portfolio", "Compare Portfolios"])
+    @staticmethod
+    def build_portfolio_ui():
+        st.header("🛠 Build Your Portfolio")
+        name = st.text_input("Portfolio Name", "My Portfolio")
+        n = st.number_input("Number of assets", min_value=1, max_value=20, value=3, step=1)
 
-# -----------------------------
-# Build Portfolio Page
-# -----------------------------
-if page == "Build Portfolio":
-    st.header("🛠 Build Your Portfolio")
+        cols = st.columns(2)
+        portfolio = {}
+        for i in range(n):
+            with cols[0]:
+                ticker = st.text_input(f"Asset {i + 1} Ticker", key=f"ticker_{i}").strip().upper()
+            with cols[1]:
+                w = st.number_input(f"Weight (%)", min_value=0.1, max_value=100.0, value=100.0 / n, step=0.1, key=f"weight_{i}")
+            if ticker:
+                portfolio[ticker] = w / 100.0
+        return name, portfolio
 
-    portfolio_name = st.text_input("Portfolio Name", "My Portfolio")
-    num_assets = st.number_input("Number of assets", min_value=1, max_value=20, value=3, step=1)
-
-    portfolio = {}
-    cols = st.columns(2)
-
-    for i in range(num_assets):
-        with cols[0]:
-            ticker = st.text_input(f"Asset {i + 1} Ticker", key=f"ticker_{i}").strip().upper()
-        with cols[1]:
-            weight_pct = st.number_input(f"Weight (%)", min_value=0.1, max_value=100.0, value=100 / num_assets,
-                                         step=0.1, key=f"weight_{i}")
-        if ticker:
-            portfolio[ticker] = weight_pct / 100  # Convert to decimal
-
-    if st.button("Save Portfolio"):
-        if portfolio_name and portfolio:
-            st.session_state.portfolios[portfolio_name] = portfolio
-            st.success(f"Portfolio '{portfolio_name}' saved!")
-
-    if st.session_state.portfolios:
+    @staticmethod
+    def show_saved_portfolios(portfolios: Dict[str, Dict[str, float]]):
         st.subheader("Saved Portfolios")
-        for name, data in st.session_state.portfolios.items():
-            st.write(f"**{name}**: {', '.join([f'{t} ({w * 100:.1f}%)' for t, w in data.items()])}")
+        if not portfolios:
+            st.info("No portfolios saved yet.")
+            return
+        for name, data in portfolios.items():
+            st.write(f"**{name}**: " + ", ".join([f"{t} ({w*100:.1f}%)" for t, w in data.items()]))
+
+    @staticmethod
+    def compare_ui_default_dates():
+        today = datetime.today()
+        default_end = today
+        default_start = today - timedelta(days=365)
+
+        start_date = st.date_input("Start Date", value=default_start.date(), max_value=today.date())
+        end_date = st.date_input("End Date", value=default_end.date(), max_value=today.date())
+        return start_date, end_date
+
+    @staticmethod
+    def show_metrics_table(metrics_list: List[dict]):
+        if not metrics_list:
+            st.info("No portfolio metrics to display.")
+            return
+        st.subheader("📊 Portfolio Metrics Comparison")
+        df = pd.DataFrame(metrics_list).set_index("Portfolio")
+        st.dataframe(df.style.format({
+            "Total Return (%)": "{:.2f}",
+            "Annualized Return (%)": "{:.2f}",
+            "Sharpe Ratio": "{:.2f}",
+            "Sortino Ratio": "{:.2f}",
+            "Max Drawdown": "{:.2%}",
+            "Performance Score": "{:.2f}"
+        }), use_container_width=True)
+
+    @staticmethod
+    def show_pie_charts(pie_figs: Dict[str, go.Figure]):
+        if not pie_figs:
+            return
+        st.subheader("🥧 Asset Allocation")
+        cols = st.columns(len(pie_figs))
+        for i, (name, fig) in enumerate(pie_figs.items()):
+            with cols[i]:
+                st.plotly_chart(fig, use_container_width=True)
+
+    @staticmethod
+    def show_growth_chart(fig: go.Figure):
+        if not fig.data:
+            st.info("No valid portfolio value data to plot.")
+            return
+        st.subheader("📈 Portfolio Value Over Time")
+        fig.update_layout(title="Portfolio Value Over Time", xaxis_title="Date", yaxis_title="Value")
+        st.plotly_chart(fig, use_container_width=True)
+
+    @staticmethod
+    def footer():
+        st.markdown("---")
+        st.markdown(
+            """
+            <div style="text-align:center; color:gray;">
+            Made with ❤️ by **Luis Ng** |
+            <a href="https://github.com/CodingLuisNg" target="_blank">GitHub</a>
+            </div>
+            """, unsafe_allow_html=True
+        )
+
 
 # -----------------------------
-# Compare Portfolios Page
+# Controller Layer
 # -----------------------------
-if page == "Compare Portfolios":
-    st.header("📈 Compare Portfolios")
+class Controller:
+    def __init__(self):
+        View.set_page()
+        View.header()
+        if "portfolios" not in st.session_state:
+            st.session_state.portfolios = {
+                "Balanced 60/40": {"SPY": 0.6, "AGG": 0.4},
+                "S&P500": {"VOO": 1.0}
+            }
 
-    # Dataset limits
-    data_start = datetime(1900, 1, 1)       # earliest available in dataset
-    data_end = datetime(2017, 12, 31)       # latest available in dataset
-
-    # Ensure defaults are within dataset range
-    default_start = data_end - timedelta(days=365)
-    if default_start < data_start:
-        default_start = data_start
-
-    default_end = data_end
-
-    # User selects dates with enforced limits
-    start_date = st.date_input(
-        "Start Date",
-        value=default_start.date(),
-        min_value=data_start.date(),
-        max_value=data_end.date()
-    )
-    end_date = st.date_input(
-        "End Date",
-        value=default_end.date(),
-        min_value=data_start.date(),
-        max_value=data_end.date()
-    )
-
-    # Convert to datetime for internal calculations
-    start_date_dt = datetime.combine(start_date, datetime.min.time())
-    end_date_dt = datetime.combine(end_date, datetime.min.time())
-
-    # Clamp to dataset range automatically
-    if start_date_dt < data_start:
-        start_date_dt = data_start
-    if end_date_dt > data_end:
-        end_date_dt = data_end
-    if start_date_dt > end_date_dt:
-        start_date_dt = end_date_dt - timedelta(days=1)
-
-    st.info(f"Backtesting will run from **{start_date_dt.strftime('%Y-%m-%d')}** "
-            f"to **{end_date_dt.strftime('%Y-%m-%d')}** (dataset limit).")
-
-    selected_portfolios = st.multiselect("Select portfolios", list(st.session_state.portfolios.keys()))
-
-    if st.button("Run Backtest") and selected_portfolios:
-        all_tickers = set()
-        for p in selected_portfolios:
-            all_tickers.update(st.session_state.portfolios[p].keys())
-        all_tickers = list(all_tickers)
-
-        with st.spinner("Fetching data (from local dataset, may take a few seconds)..."):
-            # Load Close prices from CSV folder
-            data = batch_download(all_tickers, start=start_date_dt, end=end_date_dt)
-
-        if data.empty:
-            st.warning("No data available for the selected portfolios and date range.")
+    def run(self):
+        page = st.sidebar.selectbox("Choose page", ["Build Portfolio", "Compare Portfolios"])
+        if page == "Build Portfolio":
+            self.build_page()
         else:
-            portfolio_metrics_list = []
-            pie_figs = {}
-            fig = go.Figure()
+            self.compare_page()
+        View.footer()
 
-            for p in selected_portfolios:
-                weights = st.session_state.portfolios[p]
-                tickers_in_data = [t for t in weights.keys() if t in data.columns]
+    @staticmethod
+    def build_page():
+        name, portfolio = View.build_portfolio_ui()
+        if st.button("Save Portfolio"):
+            if not name or not portfolio:
+                st.warning("Please provide a portfolio name and at least one asset.")
+            else:
+                st.session_state.portfolios[name] = portfolio
+                st.success(f"Saved portfolio '{name}'.")
+        View.show_saved_portfolios(st.session_state.portfolios)
 
-                if not tickers_in_data:
-                    st.warning(f"No valid tickers with data for portfolio {p}. Skipping...")
+    @staticmethod
+    def compare_page():
+        st.header("📈 Compare Portfolios")
+        start_date, end_date = View.compare_ui_default_dates()
+        start_dt = datetime.combine(start_date, datetime.min.time())
+        end_dt = datetime.combine(end_date, datetime.min.time())
+
+        if start_dt > end_dt:
+            st.warning("Start date cannot be after end date.")
+            return
+
+        st.info(f"Backtesting from **{start_dt.strftime('%Y-%m-%d')}** to **{end_dt.strftime('%Y-%m-%d')}**.")
+
+        selected = st.multiselect("Select portfolios", list(st.session_state.portfolios.keys()))
+        if st.button("Run Backtest") and selected:
+            tickers = sorted({t for p in selected for t in st.session_state.portfolios[p]})
+            with st.spinner("Fetching price data..."):
+                prices = DataModel.fetch_prices(tickers, start_dt, end_dt)
+
+            if prices.empty:
+                st.warning("No price data available.")
+                return
+
+            metrics_list, pie_figs, growth_fig = [], {}, go.Figure()
+            raw_scores, temp = [], []
+
+            for pname in selected:
+                weights = st.session_state.portfolios[pname]
+                available = [t for t in weights if t in prices.columns]
+                if not available:
+                    continue
+                sub_prices = prices[available].dropna(how="all")
+                val, ret = PortfolioModel.portfolio_value_from_prices(sub_prices, weights)
+                if val.empty:
                     continue
 
-                sub_data = data[tickers_in_data].dropna()
-                if sub_data.empty:
-                    st.warning(f"No data available after dropping NaNs for portfolio {p}. Skipping...")
-                    continue
+                total_ret = (val.iloc[-1] / val.iloc[0] - 1) * 100
+                days = (val.index[-1] - val.index[0]).days
+                ann_ret = PortfolioModel.annualized_return(total_ret, days)
+                risk = PortfolioModel.risk_metrics(ret)
+                raw = ann_ret * (risk["sharpe_ratio"] + risk["sortino_ratio"]) / 2
+                raw_scores.append(raw)
 
-                # Portfolio value & daily returns
-                portfolio_value, portfolio_returns = calculate_portfolio_value(sub_data, {t: weights[t]/100 for t in tickers_in_data})
-
-                if portfolio_value.empty:
-                    st.warning(f"Portfolio {p} has empty value series. Skipping...")
-                    continue
-
-                # Risk & performance metrics
-                metrics = calculate_risk_metrics(portfolio_returns)
-                total_return = (portfolio_value.iloc[-1] / portfolio_value.iloc[0] - 1) * 100
-                days = (portfolio_value.index[-1] - portfolio_value.index[0]).days
-                annual_return = ((1 + total_return/100)**(365/days) - 1) * 100 if days > 0 else 0
-                performance_score = annual_return * (metrics.get("sharpe_ratio", 0) + metrics.get("sortino_ratio", 0)) / 2
-
-                portfolio_metrics_list.append({
-                    "Portfolio": p,
-                    "Total Return (%)": total_return,
-                    "Annualized Return (%)": annual_return,
-                    "Sharpe Ratio": metrics.get("sharpe_ratio", 0),
-                    "Sortino Ratio": metrics.get("sortino_ratio", 0),
-                    "Max Drawdown": metrics.get("max_drawdown", 0),
-                    "Performance Score": performance_score
+                temp.append({
+                    "Portfolio": pname,
+                    "Total Return (%)": total_ret,
+                    "Annualized Return (%)": ann_ret,
+                    "Sharpe Ratio": risk["sharpe_ratio"],
+                    "Sortino Ratio": risk["sortino_ratio"],
+                    "Max Drawdown": risk["max_drawdown"],
+                    "Raw Score": raw,
+                    "ValueSeries": val
                 })
 
-                # Pie chart for asset allocation
-                pie_figs[p] = px.pie(
-                    names=tickers_in_data,
-                    values=[weights[t] for t in tickers_in_data],
-                    title=f"{p} Asset Allocation"
-                )
+            # Normalize performance score 0-100
+            if temp:
+                min_s, max_s = min(raw_scores), max(raw_scores)
+                for e in temp:
+                    e["Performance Score"] = (
+                        (e["Raw Score"] - min_s) / (max_s - min_s) * 100
+                        if max_s > min_s else 100
+                    )
+                    metrics_list.append({
+                        "Portfolio": e["Portfolio"],
+                        "Total Return (%)": e["Total Return (%)"],
+                        "Annualized Return (%)": e["Annualized Return (%)"],
+                        "Sharpe Ratio": e["Sharpe Ratio"],
+                        "Sortino Ratio": e["Sortino Ratio"],
+                        "Max Drawdown": e["Max Drawdown"],
+                        "Performance Score": e["Performance Score"]
+                    })
+                    w = st.session_state.portfolios[e["Portfolio"]]
+                    labels = [t for t in w if t in prices.columns]
+                    values = [w[t] for t in labels]
+                    pie = px.pie(names=labels, values=[v * 100 for v in values],
+                                 title=f"{e['Portfolio']} Allocation (%)")
+                    pie_figs[e["Portfolio"]] = pie
+                    growth_fig.add_trace(go.Scatter(
+                        x=e["ValueSeries"].index, y=e["ValueSeries"], name=e["Portfolio"], mode="lines"))
 
-                # Portfolio growth line
-                fig.add_trace(go.Scatter(x=portfolio_value.index, y=portfolio_value, mode="lines", name=p))
+            View.show_metrics_table(metrics_list)
+            View.show_pie_charts(pie_figs)
+            View.show_growth_chart(growth_fig)
 
-            # Show metrics table
-            if portfolio_metrics_list:
-                st.subheader("📊 Portfolio Metrics Comparison")
-                metrics_df = pd.DataFrame(portfolio_metrics_list).set_index("Portfolio")
-                st.dataframe(metrics_df.style.format({
-                    "Total Return (%)": "{:.2f}",
-                    "Annualized Return (%)": "{:.2f}",
-                    "Sharpe Ratio": "{:.2f}",
-                    "Sortino Ratio": "{:.2f}",
-                    "Max Drawdown": "{:.2%}",
-                    "Performance Score": "{:.2f}"
-                }))
-            else:
-                st.info("No portfolios had valid data to display metrics.")
-
-            # Show pie charts side by side
-            if pie_figs:
-                st.subheader("🥧 Asset Allocation")
-                cols = st.columns(len(pie_figs))
-                for i, (p, pie_fig) in enumerate(pie_figs.items()):
-                    with cols[i]:
-                        st.plotly_chart(pie_fig, use_container_width=True)
-
-            # Portfolio growth chart
-            if fig.data:
-                st.subheader("📈 Portfolio Value Over Time")
-                fig.update_layout(title="Portfolio Value Over Time", xaxis_title="Date", yaxis_title="Value")
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("No valid portfolio value data to plot.")
 
 # -----------------------------
-# App Footer / Author Info
+# Entrypoint
 # -----------------------------
-st.markdown("---")  # horizontal line
-st.markdown(
-    """
-    <div style="text-align:center; color:gray;">
-    Made with ❤️ by **Luis Ng** | 
-    <a href="https://github.com/CodingLuisNg" target="_blank">GitHub</a>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
+if __name__ == "__main__":
+    controller = Controller()
+    controller.run()
