@@ -1,4 +1,4 @@
-import os
+import yfinance as yf
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -15,29 +15,40 @@ DATA_FOLDER = "dataset"  # path to your TXT files
 @st.cache_data(ttl=24 * 3600)  # Cache for 24 hours
 def batch_download(tickers, start, end):
     """
-    Load historical Close prices from local TXT files.
+    Download historical Close prices from yfinance.
     Returns a DataFrame with tickers as columns and dates as index.
     """
-    all_data = {}
     start = pd.to_datetime(start)
     end = pd.to_datetime(end)
 
+    # Download data for all tickers at once
+    data = yf.download(
+        tickers=[t.upper() for t in tickers],
+        start=start.strftime("%Y-%m-%d"),
+        end=(end + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
+        progress=False,
+        group_by="ticker",
+        auto_adjust=False
+    )
+
+    all_data = {}
     for ticker in tickers:
-        # Use lowercase file names with .txt
-        file_path = os.path.join(DATA_FOLDER, f"{ticker.lower()}.txt")
-        if not os.path.exists(file_path):
-            print(f"File not found for ticker {ticker}")
+        t = ticker.upper()
+        if t in data:
+            close = data[t]["Close"].dropna()
+        elif "Close" in data.columns:  # Single ticker case
+            close = data["Close"].dropna()
+        else:
+            print(f"No data for ticker {t}")
             continue
 
-        df = pd.read_csv(file_path, parse_dates=['Date'])
-        df = df.set_index('Date')
-        df = df.loc[(df.index >= start) & (df.index <= end)]
-
-        if 'Close' not in df.columns:
-            print(f"'Close' column missing in {ticker}.txt")
+        # Filter by date range
+        close = close.loc[(close.index >= start) & (close.index <= end)]
+        if close.empty:
+            print(f"No close data in range for {t}")
             continue
 
-        all_data[ticker.upper()] = df['Close']  # Keep ticker uppercase in DataFrame
+        all_data[t] = close
 
     if not all_data:
         return pd.DataFrame()  # No data found
