@@ -28,16 +28,14 @@ It calculates metrics such as:
 - **Max Drawdown**
 - **Performance Score** (combining returns and risk management)
 
-> ⚠️ **Note:** Historical datasets are **not included** due to size. Please download and place the required CSV/TXT files from other sources in the `dataset/` folder.
-> 
-> The app uses historical data from Kaggle, You can download the dataset here: [Kaggle: Price & Volume Data for All US Stocks & ETFs](https://www.kaggle.com/datasets/borismarjanovic/price-volume-data-for-all-us-stocks-etfs?resource=download)
+> ⚠️ **Note:** The app now fetches all historical prices dynamically via Yahoo Finance using yfinance.
 
 ---
 
 ## Features
 
 - Create multiple portfolios with custom asset weights
-- Automatically adjusts backtesting range based on available data (up to 2017)
+- Backtest portfolios over any user-defined date range
 - Portfolio growth line charts
 - Asset allocation pie charts
 - Performance scoring for risk-aware comparison
@@ -58,11 +56,7 @@ cd investment-portfolio-backtester
 pip install -r requirements.txt
 ```
 
-3. Place your historical CSV/TXT datasets in a folder named "dataset".
-- Each file should be named <TICKER>.txt or <TICKER>.csv
-- Must include columns: Date, Open, High, Low, Close, Volume
-
-4. Run the app to open the app in your browser at localhost:
+3. Run the app to open the app in your browser at localhost:
 ```bash
 streamlit run main.py
 ```
