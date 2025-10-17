@@ -57,8 +57,8 @@ class Controller:
             metrics_list, pie_figs, growth_fig = [], {}, go.Figure()
             risk_list, return_list, names = [], [], []
 
-            for pname in selected:
-                weights = st.session_state.portfolios[pname]
+            for PNAME in selected:
+                weights = st.session_state.portfolios[PNAME]
                 available = [t for t in weights if t in prices.columns]
                 if not available:
                     continue
@@ -74,7 +74,7 @@ class Controller:
                 avg_vol = ret.std() * np.sqrt(252) * 100  # annualized volatility
 
                 metrics_list.append({
-                    "Portfolio": pname,
+                    "Portfolio": PNAME,
                     "Total Return (%)": total_ret,
                     "Annualized Return (%)": ann_ret,
                     "Sharpe Ratio": risk["sharpe_ratio"],
@@ -86,18 +86,25 @@ class Controller:
                 # Prepare risk-return plot
                 risk_list.append(avg_vol)
                 return_list.append(ann_ret)
-                names.append(pname)
+                names.append(PNAME)
 
                 # Growth chart
-                growth_fig.add_trace(go.Scatter(x=val.index, y=val, name=pname, mode="lines"))
+                growth_fig.add_trace(go.Scatter(x=val.index, y=val, name=PNAME, mode="lines"))
 
                 # Pie chart
                 labels = [t for t in weights if t in prices.columns]
                 values = [weights[t]*100 for t in labels]
-                pie_figs[pname] = px.pie(names=labels, values=values, title=f"{pname} Allocation (%)")
+                pie_figs[PNAME] = px.pie(names=labels, values=values, title=f"{PNAME} Allocation (%)")
+
+            portfolio_prices = {}
+            for pname in selected:
+                weights = st.session_state.portfolios[pname]
+                available = [t for t in weights if t in prices.columns]
+                if available:
+                    portfolio_prices[pname] = prices[available].dropna(how="all")
 
             View.show_metrics_table(metrics_list)
             View.show_growth_chart(growth_fig)
             View.show_pie_charts(pie_figs)
             View.show_risk_return(risk_list, return_list, names)
-            View.show_correlation_heatmap(prices, tickers)
+            View.show_correlation_heatmaps(portfolio_prices)

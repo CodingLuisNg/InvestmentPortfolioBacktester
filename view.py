@@ -21,22 +21,70 @@ class View:
 
     @staticmethod
     def build_portfolio_ui():
-        """UI for building a new investment portfolio."""
-        with st.form("portfolio_form"):
-            st.header("🛠 Build Your Portfolio")
-            name = st.text_input("Portfolio Name", "My Portfolio")
-            n = st.number_input("Number of assets", min_value=1, max_value=20, value=3, step=1)
-            cols = st.columns(2)
-            portfolio = {}
-            for i in range(n):
-                with cols[0]:
-                    ticker = st.text_input(f"Asset {i + 1} Ticker", key=f"ticker_{i}").strip().upper()
-                with cols[1]:
-                    w = st.number_input(f"Weight (%)", min_value=0.1, max_value=100.0,
-                                        value=100.0 / n, step=0.1, key=f"weight_{i}")
-                if ticker:
-                    portfolio[ticker] = w / 100.0
-            submitted = st.form_submit_button("Save Portfolio")
+        """UI for building a new investment portfolio with remove option."""
+        # Initialize session state
+        if "tickers" not in st.session_state:
+            st.session_state.tickers = []
+        if "new_ticker" not in st.session_state:
+            st.session_state.new_ticker = ""
+
+        st.header("🛠 Build Your Portfolio")
+        name = st.text_input("Portfolio Name", "My Portfolio")
+
+        # Input new ticker
+        new_ticker = st.text_input(
+            "Enter a ticker and press Enter to add",
+            value=st.session_state.new_ticker,
+            key="new_ticker_input"
+        )
+
+        # Add ticker if valid
+        if new_ticker:
+            ticker = new_ticker.strip().upper()
+            if ticker and ticker not in st.session_state.tickers:
+                st.session_state.tickers.append(ticker)
+                st.session_state.new_ticker = ""  # Clear input
+                st.rerun()  # Rerun to update UI and clear input field
+
+        portfolio = {}
+        # Use a copy to avoid modifying during iteration
+        tickers_copy = st.session_state.tickers.copy()
+
+        # Display ticker rows
+        for i, ticker in enumerate(tickers_copy):
+            col0, col1, col2 = st.columns([0.1, 0.6, 0.3])
+            # Use ticker as part of key for stability
+            remove_key = f"remove_{ticker}_{i}"
+
+            # Handle remove button click
+            if col0.button("❌", key=remove_key):
+                st.session_state.tickers.remove(ticker)
+                st.rerun()  # Immediate rerun to update UI
+
+            # Ticker input
+            t_new = col1.text_input(f"Ticker {i + 1}", value=ticker, key=f"ticker_{ticker}_{i}")
+            # Weight input
+            w = col2.number_input(
+                "Weight (%)",
+                min_value=0.1,
+                max_value=100.0,
+                value=100.0 / max(len(tickers_copy), 1),
+                step=0.1,
+                key=f"weight_{ticker}_{i}"
+            )
+            portfolio[t_new] = w / 100.0
+            # Update ticker if edited
+            if t_new != ticker and t_new:
+                st.session_state.tickers[st.session_state.tickers.index(ticker)] = t_new
+
+        # Validate total weight before saving
+        total_weight = sum(portfolio.values())
+        if total_weight < 0.99 or total_weight > 1.01:
+            st.warning(f"Total portfolio weight is {total_weight * 100:.1f}%. Adjust weights to sum to 100%.")
+            submitted = False
+        else:
+            submitted = st.button("Save Portfolio")
+
         return name, portfolio, submitted
 
     @staticmethod
@@ -45,8 +93,18 @@ class View:
         if not portfolios:
             st.info("No portfolios saved yet.")
             return
-        for name, data in portfolios.items():
-            st.write(f"**{name}**: " + ", ".join([f"{t} ({w*100:.1f}%)" for t, w in data.items()]))
+
+        # Use a copy to avoid modifying during iteration
+        portfolios_copy = portfolios.copy()
+        for name, data in portfolios_copy.items():
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.write(f"**{name}**: " + ", ".join([f"{t} ({w * 100:.1f}%)" for t, w in data.items()]))
+            with col2:
+                delete_key = f"delete_portfolio_{name}"
+                if st.button("❌ Delete", key=delete_key):
+                    st.session_state.portfolios.pop(name, None)
+                    st.rerun()  # Immediate rerun to update UI
 
     @staticmethod
     def compare_ui_dates():
@@ -110,13 +168,31 @@ class View:
         st.plotly_chart(fig)
 
     @staticmethod
-    def show_correlation_heatmap(prices: pd.DataFrame, tickers: List[str]):
-        """Show correlation heatmap of selected assets."""
-        if not tickers or prices.empty:
+    def show_correlation_heatmaps(all_prices: dict):
+        """
+        Show correlation heatmaps for each portfolio side by side.
+
+        all_prices: dict
+            Dictionary where keys are portfolio names, values are DataFrames of prices for that portfolio.
+        """
+        if not all_prices:
             return
-        corr = prices[tickers].pct_change().corr()
-        fig = px.imshow(corr, text_auto=True, color_continuous_scale="RdBu_r", title="🔗 Correlation Heatmap")
-        st.plotly_chart(fig)
+
+        n = len(all_prices)
+        cols = st.columns(n)
+
+        for i, (pname, prices) in enumerate(all_prices.items()):
+            if prices.empty:
+                continue
+            corr = prices.pct_change().corr()
+            fig = px.imshow(
+                corr,
+                text_auto=True,
+                color_continuous_scale="RdBu_r",
+                title=f"🔗 {pname} Correlation Heatmap"
+            )
+            with cols[i]:
+                st.plotly_chart(fig, use_container_width=True)
 
     @staticmethod
     def footer():
