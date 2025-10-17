@@ -2,89 +2,100 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
-# Investment Portfolio Backtester
+# Student Portfolio Playground
 
-An interactive Streamlit web application to **build, backtest, and compare investment portfolios** with historical stock and ETF data. Designed and developed by **Luis Ng**.  
+Welcome to **Student Portfolio Playground**! 🎓💹  
 
-GitHub: [https://github.com/CodingLuisNg](https://github.com/CodingLuisNg)
+This is a personal side project developed by a university student to experiment with building, managing, and analyzing investment portfolios. It’s designed as a fun playground for learning about portfolio management, backtesting, and visualizing financial data—all in one interactive web app.
 
----
-
-## Description
-
-The **Investment Portfolio Backtester** is a **Streamlit app** that allows users to:
-
-- Build custom stock & ETF portfolios
-- Backtest portfolio performance using historical data
-- Compare multiple portfolios with **risk-adjusted metrics**
-- Visualize portfolio growth and asset allocation
-
-It calculates metrics such as:
-
-- **Total Return (%)**
-- **Annualized Return (%)**
-- **Sharpe Ratio**
-- **Sortino Ratio**
-- **Max Drawdown**
-- **Performance Score** (combining returns and risk management)
-
-> ⚠️ **Note:** The app now fetches all historical prices dynamically via Yahoo Finance using yfinance.
+Check it out here: [Student Portfolio Playground](https://codingluisng-investment-portfolio-backtester.streamlit.app)
 
 ---
 
 ## Features
 
-- Create multiple portfolios with custom asset weights
-- Backtest portfolios over any user-defined date range
-- Portfolio growth line charts
-- Asset allocation pie charts
-- Performance scoring for risk-aware comparison
+**Build your own portfolio**
+![Build Portfolio](assets/Screenshot_Build_Portfolio.png)
+  - Add tickers and assign weights.
+  - Remove or edit assets easily.
+  - Validate weights sum to 100%.
+  - Delete saved portfolios with a single click.
+
+**Compare portfolios**
+  - Select multiple portfolios to backtest over a custom date range.
+  - Calculate and display metrics:
+    - Total Return
+    - Annualized Return
+    - Sharpe & Sortino Ratios
+    - Max Drawdown
+    - Average Volatility
+  - Visualize:
+    - Portfolio growth over time
+    - Asset allocation pie charts
+    - Risk vs Return scatter plot
+    - Correlation heatmaps
+
+**Interactive and visual**
+  - Fully built with **Streamlit** for a smooth, interactive web experience.
+  - Charts powered by **Plotly** for dynamic exploration.
 
 ---
 
-## Installation
+## How to Use
 
-1. Clone the repository:
+1. Go to the [web app](https://codingluisng-investment-portfolio-backtester.streamlit.app).
+2. Click **Build Portfolio** to create or edit portfolios:
+   - Enter a portfolio name.
+   - Add tickers and assign weights.
+   - Click **Save Portfolio** when ready.
+3. View all saved portfolios below the input form.
+4. To compare portfolios, switch to the **Compare Portfolios** tab:
+   - Select portfolios you want to analyze.
+   - Pick a start and end date.
+   - Click **Run Backtest** to see charts and metrics.
 
-```bash
-git clone https://github.com/CodingLuisNg/investment-portfolio-backtester.git
-cd investment-portfolio-backtester
-```
+---
 
+## Tech Stack
+
+- **Python 3.11**
+- **Streamlit** – web app interface
+- **Plotly** – interactive charts and graphs
+- **Pandas & NumPy** – data processing
+- **yfinance** – fetch historical price data
+
+---
+
+## Notes
+
+- This is a **student project**, built mostly for learning and experimentation.
+- It’s **not financial advice**—just a sandbox to play around with portfolio data.
+- Some features are still in progress:
+  - Time-based strategies
+  - Enhanced portfolio analytics
+  - Better UI tweaks and responsiveness
+
+---
+
+## How to Run Locally
+
+1. Clone the repo:
+   ```bash
+   git clone https://github.com/CodingLuisNg/student-portfolio-playground.git
+   cd student-portfolio-playground
+   ```
 2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-3. Run the app to open the app in your browser at localhost:
-```bash
-streamlit run main.py
-```
-
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Run the app:
+   ```bash
+   streamlit run main.py
+   ```
+   
 ---
 
-## Usage
-
-1. **Build a Portfolio**  
-   - Enter portfolio name  
-   - Add tickers and weights  
-   - Save your portfolio  
-
-
-2. **Run Backtests**  
-   - Select portfolios  
-   - Set backtesting range  
-   - Click "Run Backtest"  
-
-
-3. **View Results**  
-   - Metrics (returns, Sharpe, etc.)  
-   - Growth and allocation charts  
-
----
-
-## Author
-Luis Ng
+Made with ❤️ by Luis Ng, a CS student trying to combine coding and finance into a fun side project.
 
 ---
 

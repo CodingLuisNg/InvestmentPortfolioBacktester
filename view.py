@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
 
-APP_TITLE = "Automatic Investment"
+APP_TITLE = "Student Portfolio Playground"
 
 
 class View:
@@ -159,10 +159,10 @@ class View:
         """Show risk vs return scatter plot."""
         if not risk_list or not return_list:
             return
+        st.subheader("⚖️ Risk vs Reward")
         fig = px.scatter(
             x=risk_list, y=return_list, text=names,
             labels={"x": "Annualized Volatility (%)", "y": "Annualized Return (%)"},
-            title="⚖️ Risk vs Reward"
         )
         fig.update_traces(textposition="top center", marker=dict(size=15, color='royalblue'))
         st.plotly_chart(fig)
@@ -178,8 +178,10 @@ class View:
         if not all_prices:
             return
 
+        st.subheader("🔗Correlation Heatmap")
         n = len(all_prices)
         cols = st.columns(n)
+
 
         for i, (pname, prices) in enumerate(all_prices.items()):
             if prices.empty:
@@ -189,7 +191,7 @@ class View:
                 corr,
                 text_auto=True,
                 color_continuous_scale="RdBu_r",
-                title=f"🔗 {pname} Correlation Heatmap"
+                title= pname
             )
             with cols[i]:
                 st.plotly_chart(fig, use_container_width=True)
