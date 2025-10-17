@@ -59,7 +59,7 @@ class View:
 
     @staticmethod
     def show_metrics_table(metrics_list: List[dict]):
-        """Display portfolio performance metrics in a formatted table."""
+        """Display portfolio performance metrics including avg volatility."""
         if not metrics_list:
             st.info("No portfolio metrics to display.")
             return
@@ -104,10 +104,9 @@ class View:
         fig = px.scatter(
             x=risk_list, y=return_list, text=names,
             labels={"x": "Annualized Volatility (%)", "y": "Annualized Return (%)"},
-            title="Risk vs Return"
+            title="⚖️ Risk vs Reward"
         )
-        fig.update_traces(textposition="top center", marker=dict(size=15))
-        st.subheader("⚖️ Risk vs Reward")
+        fig.update_traces(textposition="top center", marker=dict(size=15, color='royalblue'))
         st.plotly_chart(fig)
 
     @staticmethod
@@ -116,8 +115,7 @@ class View:
         if not tickers or prices.empty:
             return
         corr = prices[tickers].pct_change().corr()
-        fig = px.imshow(corr, text_auto=True, color_continuous_scale="RdBu_r", title="Correlation Heatmap")
-        st.subheader("🔗 Correlation Heatmap")
+        fig = px.imshow(corr, text_auto=True, color_continuous_scale="RdBu_r", title="🔗 Correlation Heatmap")
         st.plotly_chart(fig)
 
     @staticmethod
@@ -129,5 +127,6 @@ class View:
             Made with ❤️ by <b>Luis Ng</b> |
             <a href="https://github.com/CodingLuisNg" target="_blank">GitHub</a>
             </div>
-            """, unsafe_allow_html=True
+            """,
+            unsafe_allow_html=True
         )

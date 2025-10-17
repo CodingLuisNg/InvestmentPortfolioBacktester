@@ -18,10 +18,10 @@ class Controller:
             }
 
     def run(self):
-        page = st.sidebar.selectbox("Choose page", ["Build Portfolio", "Compare Portfolios"])
-        if page == "Build Portfolio":
+        tabs = st.tabs(["Build Portfolio", "Compare Portfolios"])
+        with tabs[0]:
             self.build_page()
-        else:
+        with tabs[1]:
             self.compare_page()
         View.footer()
 
