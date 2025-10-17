@@ -15,11 +15,11 @@ Check it out here: [Student Portfolio Playground](https://codingluisng-investmen
 ## Features
 
 **Build your own portfolio**
-![Build Portfolio](assets/Screenshot_Build_Portfolio.png)
   - Add tickers and assign weights.
   - Remove or edit assets easily.
   - Validate weights sum to 100%.
   - Delete saved portfolios with a single click.
+![Build Portfolio](assets/Screenshot_Build_Portfolio.png)
 
 **Compare portfolios**
   - Select multiple portfolios to backtest over a custom date range.
@@ -29,11 +29,16 @@ Check it out here: [Student Portfolio Playground](https://codingluisng-investmen
     - Sharpe & Sortino Ratios
     - Max Drawdown
     - Average Volatility
+  ![Compare Portfolio](assets/Screenshot_compare_portfolio.png)
   - Visualize:
     - Portfolio growth over time
+    ![Portfolio Growth](assets/Screenshot_Portfolio_Value.png)
     - Asset allocation pie charts
+    ![Portfolio Growth](assets/Screenshot_Asset_allocation.png)
     - Risk vs Return scatter plot
+    ![Portfolio Growth](assets/Screenshot_risk_reward.png)
     - Correlation heatmaps
+    ![Portfolio Growth](assets/Screenshot_correlation.png)
 
 **Interactive and visual**
   - Fully built with **Streamlit** for a smooth, interactive web experience.
