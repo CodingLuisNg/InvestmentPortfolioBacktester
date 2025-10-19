@@ -104,15 +104,15 @@ class View:
                 delete_key = f"delete_portfolio_{name}"
                 if st.button("❌ Delete", key=delete_key):
                     st.session_state.portfolios.pop(name, None)
-                    st.rerun()  # Immediate rerun to update UI
+                    st.rerun()
 
     @staticmethod
-    def compare_ui_dates():
+    def compare_ui_dates(prefix="compare_"):
         """Date picker for comparison; no lower limit."""
         today = datetime.today()
         default_start = today - timedelta(days=365)
-        start_date = st.date_input("Start Date", value=default_start.date())
-        end_date = st.date_input("End Date", value=today.date())
+        start_date = st.date_input("Start Date", value=default_start.date(), key=f"{prefix}start")
+        end_date = st.date_input("End Date", value=today.date(), key=f"{prefix}end")
         return start_date, end_date
 
     @staticmethod
