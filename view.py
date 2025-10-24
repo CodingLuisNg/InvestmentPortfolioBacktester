@@ -108,11 +108,23 @@ class View:
 
     @staticmethod
     def compare_ui_dates(prefix="compare_"):
-        """Date picker for comparison; no lower limit."""
         today = datetime.today()
         default_start = today - timedelta(days=365)
-        start_date = st.date_input("Start Date", value=default_start.date(), key=f"{prefix}start")
-        end_date = st.date_input("End Date", value=today.date(), key=f"{prefix}end")
+        min_date = datetime(1900, 1, 1).date()
+        start_date = st.date_input(
+            "Start Date",
+            value=default_start.date(),
+            key=f"{prefix}start",
+            min_value=min_date,
+            max_value=today.date()
+        )
+        end_date = st.date_input(
+            "End Date",
+            value=today.date(),
+            key=f"{prefix}end",
+            min_value=min_date,
+            max_value=today.date()
+        )
         return start_date, end_date
 
     @staticmethod
